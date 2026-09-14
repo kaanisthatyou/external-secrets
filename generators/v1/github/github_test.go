@@ -143,6 +143,40 @@ spec:
 			server: server,
 		},
 		{
+			name: "secret error names the namespace",
+			args: args{
+				ctx:       context.TODO(),
+				namespace: "foo",
+				kube: clientfake.NewClientBuilder().WithObjects(&v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "testName",
+						Namespace: "bar",
+					},
+					Data: map[string][]byte{
+						"privateKey": pem,
+					},
+				}).Build(),
+				jsonSpec: &apiextensions.JSON{
+					Raw: fmt.Appendf(nil, `apiVersion: generators.external-secrets.io/v1alpha1
+kind: GithubToken
+spec:
+  appID: "0000000"
+  installID: "00000000"
+  URL: %q
+  auth:
+    privateKey:
+      secretRef:
+        name: "testName"
+        namespace: "bar"
+        key: "privateKey"`, server.URL),
+				},
+			},
+			assertErr: func(t *testing.T, err error) {
+				assert.ErrorContains(t, err, `cannot get Kubernetes secret "testName" from namespace "foo"`)
+			},
+			server: server,
+		},
+		{
 			name: "fail on bad request",
 			args: args{
 				ctx:       context.TODO(),
