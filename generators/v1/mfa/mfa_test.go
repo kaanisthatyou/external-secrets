@@ -34,11 +34,12 @@ func TestGenerate(t *testing.T) {
 		client   client.Client
 	}
 	tests := []struct {
-		name    string
-		g       *Generator
-		args    args
-		want    map[string][]byte
-		wantErr bool
+		name       string
+		g          *Generator
+		args       args
+		want       map[string][]byte
+		wantErr    bool
+		wantErrMsg string
 	}{
 		{
 			name: "no json spec should result in error",
@@ -55,6 +56,36 @@ func TestGenerate(t *testing.T) {
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "missing secret error names the secret and namespace",
+			args: args{
+				jsonSpec: &apiextensions.JSON{
+					Raw: []byte(`{"spec": {"secret": {"name": "secret", "key": "secret"}}}`),
+				},
+				client: clientfake.NewClientBuilder().Build(),
+			},
+			wantErrMsg: `cannot get Kubernetes secret "secret" from namespace "namespace"`,
+			wantErr:    true,
+		},
+		{
+			name: "missing secret key should result in error",
+			args: args{
+				jsonSpec: &apiextensions.JSON{
+					Raw: []byte(`{"spec": {"secret": {"name": "secret", "key": "missing"}}}`),
+				},
+				client: clientfake.NewClientBuilder().WithObjects(&v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "secret",
+						Namespace: "namespace",
+					},
+					Data: map[string][]byte{
+						"secret": []byte("foo"),
+					},
+				}).Build(),
+			},
+			wantErrMsg: `cannot find secret data for key: "missing"`,
+			wantErr:    true,
 		},
 		{
 			name: "spec with secret should result in valid token",
@@ -87,6 +118,9 @@ func TestGenerate(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Generator.Generate() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+			if tt.wantErrMsg != "" {
+				assert.ErrorContains(t, err, tt.wantErrMsg)
 			}
 			assert.Equal(t, tt.want, got)
 		})
